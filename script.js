@@ -11,6 +11,8 @@ window.onload = function () {
   
     // Skapa en array för att hålla alla cirklar för varje frekvens
     const allCircles = [];
+    let spawnTimer = 0;  // Timer för att kontrollera spawn rate
+    const spawnInterval = 10;  // Justerbar spawn rate, högre värde = färre cirklar
   
     // Koppla ljudkällan (audio element) till Web Audio API
     const audioSource = audioContext.createMediaElementSource(audio);
@@ -28,12 +30,12 @@ window.onload = function () {
     // Funktion för att skapa nya cirklar baserat på frekvenser
     function spawnCircles(index, barHeight, barWidth) {
       // Generera ännu färre cirklar för varje volymnivå
-      const numCircles = Math.floor(barHeight / 120);  // Ännu färre cirklar genereras
+      const numCircles = Math.floor(barHeight / 60);  // Ännu färre cirklar genereras
       for (let j = 0; j < numCircles; j++) {
         const circle = {
           x: index * barWidth + Math.random() * barWidth, // Slumpmässig x-position inom frekvensens intervall
           y: 80,                           // Starta från toppen (molnets höjd)
-          speed: 1 + Math.random() * 3,    // Slumpmässig hastighet mellan 1 och 4
+          speed: 1 + Math.random() * 2,    // Slumpmässig hastighet mellan 1 och 4
           radius: 3,                       // Alla cirklar har samma storlek
           color: getColorForFrequency(index, analyser.frequencyBinCount)
         };
@@ -91,14 +93,22 @@ window.onload = function () {
       const barWidth = canvas.width / analyser.frequencyBinCount;  // Varje frekvensband har sitt eget segment
   
       // Endast de frekvenser som ger utslag visualiseras
-      for (let i = 0; i < analyser.frequencyBinCount; i++) {
-        const barHeight = dataArray[i];  // Amplituden (volymen) för frekvensen
+      if (spawnTimer === 0) {  // Skapa cirklar endast när timern är 0
+        for (let i = 0; i < analyser.frequencyBinCount; i++) {
+          const barHeight = dataArray[i];  // Amplituden (volymen) för frekvensen
   
-        // Om frekvensens volym är väldigt låg, hoppa över
-        if (barHeight < 30) continue;  // Strängare tröskel för att ignorera svaga frekvenser
+          // Om frekvensens volym är väldigt låg, hoppa över
+          if (barHeight < 30) continue;  // Strängare tröskel för att ignorera svaga frekvenser
   
-        // Skapa nya cirklar baserat på volymen
-        spawnCircles(i, barHeight, barWidth);
+          // Skapa nya cirklar baserat på volymen
+          spawnCircles(i, barHeight, barWidth);
+        }
+      }
+  
+      // Hantera spawn rate-timer
+      spawnTimer++;
+      if (spawnTimer >= spawnInterval) {
+        spawnTimer = 0;  // Återställ spawn-timern efter ett visst intervall
       }
   
       // Uppdatera och rita alla cirklar som finns
