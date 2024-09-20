@@ -5,38 +5,110 @@ window.onload = function () {
   
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 256;  // Number of frequency bins
+    
+    analyser.fftSize = 64;  // Mindre fftSize för att minska antalet frekvensband (32 band)
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
   
-    // Connect the audio element to the Web Audio API
+    // Skapa en array för att hålla alla cirklar för varje frekvens
+    const allCircles = [];
+  
+    // Koppla ljudkällan (audio element) till Web Audio API
     const audioSource = audioContext.createMediaElementSource(audio);
     audioSource.connect(analyser);
     analyser.connect(audioContext.destination);
   
-    // Visualize the frequency data on the canvas
+    // Färg baserat på frekvens (från blått till rött)
+    function getColorForFrequency(index, frequencyBinCount) {
+      const ratio = index / frequencyBinCount;
+      const red = Math.round(255 * ratio);
+      const blue = 255 - red;
+      return `rgb(${red}, 50, ${blue})`;  // Blå för låga frekvenser, röd för höga
+    }
+  
+    // Funktion för att skapa nya cirklar baserat på frekvenser
+    function spawnCircles(index, barHeight, barWidth) {
+      // Generera ännu färre cirklar för varje volymnivå
+      const numCircles = Math.floor(barHeight / 120);  // Ännu färre cirklar genereras
+      for (let j = 0; j < numCircles; j++) {
+        const circle = {
+          x: index * barWidth + Math.random() * barWidth, // Slumpmässig x-position inom frekvensens intervall
+          y: 80,                           // Starta från toppen (molnets höjd)
+          speed: 1 + Math.random() * 3,    // Slumpmässig hastighet mellan 1 och 4
+          radius: 3,                       // Alla cirklar har samma storlek
+          color: getColorForFrequency(index, analyser.frequencyBinCount)
+        };
+        allCircles.push(circle);  // Lägg till cirkeln i listan
+      }
+    }
+  
+    // Funktion för att rita moln
+    function drawCloud() {
+      const cloudX = canvas.width / 2;
+      const cloudY = 50;
+      const cloudRadius = 80;
+      
+      canvasContext.fillStyle = '#B0C4DE';  // Ljusblå färg för molnet
+      canvasContext.beginPath();
+      canvasContext.arc(cloudX - 100, cloudY, cloudRadius, 0, Math.PI * 2);  // Vänstra delen av molnet
+      canvasContext.arc(cloudX, cloudY - 20, cloudRadius + 30, 0, Math.PI * 2);  // Centern av molnet
+      canvasContext.arc(cloudX + 100, cloudY, cloudRadius, 0, Math.PI * 2);  // Högra delen av molnet
+      canvasContext.fill();
+    }
+  
+    // Funktion för att uppdatera och rita alla cirklar
+    function updateAndDrawCircles() {
+      // Loopa över alla cirklar
+      for (let i = allCircles.length - 1; i >= 0; i--) {
+        const circle = allCircles[i];
+  
+        // Uppdatera y-positionen
+        circle.y += circle.speed;
+  
+        // Rita cirkeln
+        canvasContext.fillStyle = circle.color;
+        canvasContext.beginPath();
+        canvasContext.arc(circle.x, circle.y, circle.radius, 0, Math.PI * 2);
+        canvasContext.fill();
+  
+        // Om cirkeln når botten, ta bort den
+        if (circle.y > canvas.height) {
+          allCircles.splice(i, 1);  // Ta bort cirkeln från listan
+        }
+      }
+    }
+  
+    // Funktion för att rita regn av cirklar baserat på frekvenser
     function draw() {
       requestAnimationFrame(draw);
   
       analyser.getByteFrequencyData(dataArray);
   
       canvasContext.clearRect(0, 0, canvas.width, canvas.height);
-      const barWidth = (canvas.width / analyser.frequencyBinCount) * 2.5;
-      let barHeight;
-      let x = 0;
   
+      // Rita molnet
+      drawCloud();
+  
+      const barWidth = canvas.width / analyser.frequencyBinCount;  // Varje frekvensband har sitt eget segment
+  
+      // Endast de frekvenser som ger utslag visualiseras
       for (let i = 0; i < analyser.frequencyBinCount; i++) {
-        barHeight = dataArray[i];
+        const barHeight = dataArray[i];  // Amplituden (volymen) för frekvensen
   
-        canvasContext.fillStyle = `rgb(${barHeight + 100}, 50, 50)`;
-        canvasContext.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight / 2);
+        // Om frekvensens volym är väldigt låg, hoppa över
+        if (barHeight < 30) continue;  // Strängare tröskel för att ignorera svaga frekvenser
   
-        x += barWidth + 1;
+        // Skapa nya cirklar baserat på volymen
+        spawnCircles(i, barHeight, barWidth);
       }
+  
+      // Uppdatera och rita alla cirklar som finns
+      updateAndDrawCircles();
     }
   
+    // Starta ritloopen
     draw();
   
-    // Play the audio when the user clicks play
+    // Se till att AudioContext återupptas när ljudet spelas
     audio.onplay = function () {
       if (audioContext.state === 'suspended') {
         audioContext.resume();
