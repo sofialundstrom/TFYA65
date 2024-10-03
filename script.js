@@ -1,127 +1,229 @@
 window.onload = function () {
-    const audio = document.getElementById('audio');
-    const canvas = document.getElementById('visualizer');
-    const canvasContext = canvas.getContext('2d');
-  
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const analyser = audioContext.createAnalyser();
-    
-    analyser.fftSize = 64;  // Mindre fftSize för att minska antalet frekvensband (32 band)
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-  
-    // Skapa en array för att hålla alla cirklar för varje frekvens
-    const allCircles = [];
-    let spawnTimer = 0;  // Timer för att kontrollera spawn rate
-    const spawnInterval = 10;  // Justerbar spawn rate, högre värde = färre cirklar
-  
-    // Koppla ljudkällan (audio element) till Web Audio API
-    const audioSource = audioContext.createMediaElementSource(audio);
-    audioSource.connect(analyser);
-    analyser.connect(audioContext.destination);
-  
-    // Färg baserat på frekvens (från blått till rött)
-    function getColorForFrequency(index, frequencyBinCount) {
-      const ratio = index / frequencyBinCount;
-      const red = Math.round(255 * ratio);
-      const blue = 255 - red;
-      return `rgb(${red}, 50, ${blue})`;  // Blå för låga frekvenser, röd för höga
-    }
-  
-    // Funktion för att skapa nya cirklar baserat på frekvenser
-    function spawnCircles(index, barHeight, barWidth) {
-      // Generera ännu färre cirklar för varje volymnivå
-      const numCircles = Math.floor(barHeight / 60);  // Ännu färre cirklar genereras
-      for (let j = 0; j < numCircles; j++) {
-        const circle = {
-          x: index * barWidth + Math.random() * barWidth, // Slumpmässig x-position inom frekvensens intervall
-          y: 80,                           // Starta från toppen (molnets höjd)
-          speed: 1 + Math.random() * 2,    // Slumpmässig hastighet mellan 1 och 4
-          radius: 3,                       // Alla cirklar har samma storlek
-          color: getColorForFrequency(index, analyser.frequencyBinCount)
-        };
-        allCircles.push(circle);  // Lägg till cirkeln i listan
+  const audio = document.getElementById('audio');
+  const canvas = document.getElementById('visualizer');
+  const canvasContext = canvas.getContext('2d');
+
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const analyser = audioContext.createAnalyser();
+
+  analyser.fftSize = 256;  // Higher resolution for better frequency separation
+  analyser.minDecibels = -70;  // Adjust min dB to ignore very low amplitudes
+  analyser.maxDecibels = -10;  // Max dB to limit sensitivity
+  const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+  const allCircles = [];
+  let spawnTimer = 0;  
+  const spawnInterval = 15;  // Control spawn rate
+
+  // Water wave parameters
+  const waves = [];  // Store wave objects for localized wave effects
+  const waveSpeed = 0.05;  // Speed of wave movement
+
+  // Color palette for the 8 frequency intervals
+  const colorPalette = [
+    '#66ccff',  // Light neon blue
+    '#99ffff',  // Light cyan (transition from blue to white)
+    '#ffffff',  // White (transition color)
+    '#ff99ff',  // Light neon pink
+    '#ff66cc',  // Bright pink (neon pink)
+    '#ff3399',  // Neon pink
+    '#ff0066',  // Bright neon magenta
+    '#cc00ff',  // Neon purple
+  ];
+
+  // Frequency ranges corresponding to the 8 intervals (updated)
+  const frequencyRanges = [
+    { min: 0, max: 172.66 },      // Band 1: 0 Hz - 172.66 Hz
+    { min: 172.66, max: 345.32 },  // Band 2: 172.66 Hz - 345.32 Hz
+    { min: 345.32, max: 518 },     // Band 3: 345.32 Hz - 518 Hz
+    { min: 518, max: 690.66 },     // Band 4: 518 Hz - 690.66 Hz
+    { min: 690.66, max: 864 },     // Band 5: 690.66 Hz - 864 Hz
+    { min: 864, max: 1037.32 },    // Band 6: 864 Hz - 1037.32 Hz
+    { min: 1037.32, max: 1210 },    // Band 7: 1037.32 Hz - 1210 Hz
+    { min: 1210, max: 12800 },      // Band 8: 1210 Hz - 12800 Hz
+  ];
+
+  // Connect audio source to Web Audio API
+  const audioSource = audioContext.createMediaElementSource(audio);
+  audioSource.connect(analyser);
+  analyser.connect(audioContext.destination);
+
+  // Function to count frequencies and return frequency data
+  function countFrequencies() {
+    const freqCounts = Array.from({ length: 8 }, () => ({ count: 0, bands: [] }));  // Create 8 frequency bands
+
+    for (let i = 0; i < analyser.frequencyBinCount; i++) {
+      const amplitude = dataArray[i];
+      const threshold = 20;  // Adjust threshold for all frequencies
+      if (amplitude > threshold) {
+        const bandIndex = Math.floor((i / analyser.frequencyBinCount) * frequencyRanges.length);
+        freqCounts[bandIndex].count++;
+        freqCounts[bandIndex].bands.push(i);
       }
     }
-  
-    // Funktion för att rita moln
-    function drawCloud() {
-      const cloudX = canvas.width / 2;
-      const cloudY = 50;
-      const cloudRadius = 80;
-      
-      canvasContext.fillStyle = '#B0C4DE';  // Ljusblå färg för molnet
+
+    return freqCounts;
+  }
+
+  // Function to get color based on frequency band
+  function getColorForFrequency(bandIndex) {
+    return colorPalette[bandIndex];  // Return color from palette based on the interval
+  }
+
+  // Function to spawn circles based on frequency activity
+  function spawnCircles(frequencyData) {
+    const canvasSectionWidth = canvas.width / 8;  // Each frequency band gets one-eighth of the canvas width
+    const columnWidth = canvasSectionWidth * 0.8;  // Width of the column, with gaps between columns
+
+    frequencyData.forEach((freqData, bandIndex) => {
+      const { count, bands } = freqData;
+
+      if (count > 0) {  // Only create circles if there's activity in the frequency band
+        const numCircles = count;  // The number of circles corresponds to frequency activity
+
+        for (let i = 0; i < numCircles; i++) {
+          const circle = {
+            x: bandIndex * canvasSectionWidth + (canvasSectionWidth - columnWidth) / 2 + Math.random() * columnWidth,  // Place circles within column
+            y: 0,  // Start from the top of the canvas
+            speed: 1 + Math.random() * 2,  // Random speed
+            radius: 3,  // Fixed size of circles
+            color: getColorForFrequency(bandIndex)  // Get color from color palette
+          };
+          allCircles.push(circle);
+        }
+      }
+    });
+  }
+
+  // Function to create localized wave effect at the water surface
+  function createLocalizedWave(x) {
+    waves.push({
+      x: x,            // X-coordinate where raindrop hits
+      amplitude: 20,   // Initial amplitude of the wave
+      decay: 0.98,     // Wave decay over time
+      offset: 0        // Initial wave offset
+    });
+  }
+
+  // Function to draw water waves (localized where raindrops hit)
+  function drawWater() {
+    const waterHeight = canvas.height - 100;
+    canvasContext.fillStyle = '#001f3f';  // Water color
+    canvasContext.fillRect(0, waterHeight, canvas.width, 100);  // Draw the water
+
+    // Draw localized waves on the water
+    waves.forEach((wave, index) => {
       canvasContext.beginPath();
-      canvasContext.arc(cloudX - 100, cloudY, cloudRadius, 0, Math.PI * 2);  // Vänstra delen av molnet
-      canvasContext.arc(cloudX, cloudY - 20, cloudRadius + 30, 0, Math.PI * 2);  // Centern av molnet
-      canvasContext.arc(cloudX + 100, cloudY, cloudRadius, 0, Math.PI * 2);  // Högra delen av molnet
+      for (let i = 0; i < canvas.width; i++) {
+        // Calculate wave height only near the wave's origin (localized)
+        const distance = Math.abs(i - wave.x);
+        const waveEffect = Math.exp(-distance * 0.05);  // Dampen wave effect with distance
+
+        const waveY = waterHeight + Math.sin(i * waveSpeed + wave.offset) * wave.amplitude * waveEffect;
+        canvasContext.lineTo(i, waveY);
+      }
+      canvasContext.lineTo(canvas.width, canvas.height);  // Complete the shape
+      canvasContext.lineTo(0, canvas.height);
+      canvasContext.closePath();
+      canvasContext.fillStyle = '#0074D9';  // Wave color
       canvasContext.fill();
-    }
-  
-    // Funktion för att uppdatera och rita alla cirklar
-    function updateAndDrawCircles() {
-      // Loopa över alla cirklar
-      for (let i = allCircles.length - 1; i >= 0; i--) {
-        const circle = allCircles[i];
-  
-        // Uppdatera y-positionen
-        circle.y += circle.speed;
-  
-        // Rita cirkeln
-        canvasContext.fillStyle = circle.color;
-        canvasContext.beginPath();
-        canvasContext.arc(circle.x, circle.y, circle.radius, 0, Math.PI * 2);
-        canvasContext.fill();
-  
-        // Om cirkeln når botten, ta bort den
-        if (circle.y > canvas.height) {
-          allCircles.splice(i, 1);  // Ta bort cirkeln från listan
-        }
+
+      // Update wave parameters
+      wave.offset += 0.05;  // Shift wave to create animation
+      wave.amplitude *= wave.decay;  // Reduce wave amplitude over time
+
+      // Remove wave if amplitude becomes too small
+      if (wave.amplitude < 1) {
+        waves.splice(index, 1);
+      }
+    });
+  }
+
+  // Function to update and draw all circles
+  function updateAndDrawCircles() {
+    for (let i = allCircles.length - 1; i >= 0; i--) {
+      const circle = allCircles[i];
+      circle.y += circle.speed;
+
+      // Draw circle
+      canvasContext.fillStyle = circle.color;
+      canvasContext.beginPath();
+      canvasContext.arc(circle.x, circle.y, circle.radius, 0, Math.PI * 2);
+      canvasContext.fill();
+
+      // Check if circle hits the water
+      if (circle.y > canvas.height - 100) {
+        createLocalizedWave(circle.x);  // Create a localized wave at the impact point
+        allCircles.splice(i, 1);  // Remove circle from list
       }
     }
-  
-    // Funktion för att rita regn av cirklar baserat på frekvenser
-    function draw() {
-      requestAnimationFrame(draw);
-  
-      analyser.getByteFrequencyData(dataArray);
-  
-      canvasContext.clearRect(0, 0, canvas.width, canvas.height);
-  
-      // Rita molnet
-      drawCloud();
-  
-      const barWidth = canvas.width / analyser.frequencyBinCount;  // Varje frekvensband har sitt eget segment
-  
-      // Endast de frekvenser som ger utslag visualiseras
-      if (spawnTimer === 0) {  // Skapa cirklar endast när timern är 0
-        for (let i = 0; i < analyser.frequencyBinCount; i++) {
-          const barHeight = dataArray[i];  // Amplituden (volymen) för frekvensen
-  
-          // Om frekvensens volym är väldigt låg, hoppa över
-          if (barHeight < 30) continue;  // Strängare tröskel för att ignorera svaga frekvenser
-  
-          // Skapa nya cirklar baserat på volymen
-          spawnCircles(i, barHeight, barWidth);
-        }
-      }
-  
-      // Hantera spawn rate-timer
-      spawnTimer++;
-      if (spawnTimer >= spawnInterval) {
-        spawnTimer = 0;  // Återställ spawn-timern efter ett visst intervall
-      }
-  
-      // Uppdatera och rita alla cirklar som finns
-      updateAndDrawCircles();
+  }
+
+  // Tooltip element
+  const tooltip = document.createElement('div');
+  tooltip.style.position = 'absolute';
+  tooltip.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+  tooltip.style.color = 'white';
+  tooltip.style.padding = '5px';
+  tooltip.style.borderRadius = '3px';
+  tooltip.style.pointerEvents = 'none';
+  tooltip.style.display = 'none'; // Initially hidden
+  document.body.appendChild(tooltip);
+
+  // Function to visualize the rain and frequency data
+  function draw() {
+    requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(dataArray);
+    canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Spawn circles based on frequency bands
+    if (spawnTimer === 0) {
+      const frequencyData = countFrequencies();  // Analyze distribution of frequencies
+      spawnCircles(frequencyData);               // Create circles based on frequency activity
     }
-  
-    // Starta ritloopen
-    draw();
-  
-    // Se till att AudioContext återupptas när ljudet spelas
-    audio.onplay = function () {
-      if (audioContext.state === 'suspended') {
-        audioContext.resume();
-      }
-    };
+
+    spawnTimer++;
+    if (spawnTimer >= spawnInterval) {
+      spawnTimer = 0;
+    }
+
+    // Draw circles (raindrops)
+    updateAndDrawCircles();
+
+    // Draw localized water waves
+    drawWater();
+  }
+
+  // Event listener for mouse movement over the canvas
+  canvas.addEventListener('mousemove', (event) => {
+    const canvasSectionWidth = canvas.width / 8; // Width of each frequency band
+    const mouseX = event.clientX - canvas.getBoundingClientRect().left;
+
+    // Determine the hovered frequency band
+    const hoveredBandIndex = Math.floor(mouseX / canvasSectionWidth);
+    
+    if (hoveredBandIndex >= 0 && hoveredBandIndex < frequencyRanges.length) {
+      const { min, max } = frequencyRanges[hoveredBandIndex];
+      tooltip.innerText = `Frequency Range: ${min} - ${max} Hz`;
+      tooltip.style.left = `${event.clientX + 10}px`;
+      tooltip.style.top = `${event.clientY + 10}px`;
+      tooltip.style.display = 'block'; // Show the tooltip
+    } else {
+      tooltip.style.display = 'none'; // Hide the tooltip if outside bands
+    }
+  });
+
+  // Event listener to hide the tooltip when not hovering over the canvas
+  canvas.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none';
+  });
+
+  // Ensure AudioContext resumes when audio is played
+  audio.onplay = function () {
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
   };
+
+  draw();
+};

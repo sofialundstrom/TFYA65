@@ -1,19 +1,21 @@
 body {
-    font-family: Arial, sans-serif;
-    text-align: center;
-    margin: 20px;
-  }
-  
-  canvas {
-    border: 1px solid black;
-    display: block;
-    margin: 0 auto;
-  }
-  
-  audio {
-    margin-top: 20px;
-  }
-  h1 {
-    font-family:'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
-    font-weight: lighter;
-  }
+  font-family: Arial, sans-serif;
+  text-align: center;
+  margin: 20px;
+  background: linear-gradient(135deg, rgb(15, 3, 39), rgb(57, 1, 171));
+}
+
+canvas {
+  border: 1px linear-gradient(135deg, rgb(45, 41, 252), rgb(225, 20, 92));
+  display: block;
+  margin: 0 auto;
+}
+
+audio {
+  margin-top: 20px;
+}
+h1 {
+  font-family:'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+  font-weight: lighter;
+  color: white
+}
