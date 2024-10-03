@@ -31,17 +31,15 @@ window.onload = function () {
     '#cc00ff',  // Neon purple
   ];
 
-  // Frequency ranges corresponding to the 8 intervals (updated)
-  const frequencyRanges = [
-    { min: 0, max: 172.66 },      // Band 1: 0 Hz - 172.66 Hz
-    { min: 172.66, max: 345.32 },  // Band 2: 172.66 Hz - 345.32 Hz
-    { min: 345.32, max: 518 },     // Band 3: 345.32 Hz - 518 Hz
-    { min: 518, max: 690.66 },     // Band 4: 518 Hz - 690.66 Hz
-    { min: 690.66, max: 864 },     // Band 5: 690.66 Hz - 864 Hz
-    { min: 864, max: 1037.32 },    // Band 6: 864 Hz - 1037.32 Hz
-    { min: 1037.32, max: 1210 },    // Band 7: 1037.32 Hz - 1210 Hz
-    { min: 1210, max: 12800 },      // Band 8: 1210 Hz - 12800 Hz
-  ];
+  // Define logarithmic frequency ranges for visualization and hover
+  const fMin = 20;  // Minimum frequency in Hz
+  const fMax = 20000;  // Maximum frequency in Hz
+
+  const frequencyRanges = Array.from({ length: 8 }, (_, index) => {
+    const min = fMin * Math.pow(fMax / fMin, index / 8);
+    const max = fMin * Math.pow(fMax / fMin, (index + 1) / 8);
+    return { min, max };
+  });
 
   // Connect audio source to Web Audio API
   const audioSource = audioContext.createMediaElementSource(audio);
@@ -50,15 +48,26 @@ window.onload = function () {
 
   // Function to count frequencies and return frequency data
   function countFrequencies() {
-    const freqCounts = Array.from({ length: 8 }, () => ({ count: 0, bands: [] }));  // Create 8 frequency bands
+    const freqCounts = Array.from({ length: 8 }, () => ({ count: 0, bands: [] }));
+    
+    const sampleRate = audioContext.sampleRate;
+    const binFrequency = sampleRate / analyser.fftSize;  // Calculate bin size in Hz
 
     for (let i = 0; i < analyser.frequencyBinCount; i++) {
       const amplitude = dataArray[i];
-      const threshold = 20;  // Adjust threshold for all frequencies
+      const threshold = 20;  // Ignore low amplitudes
+      const frequency = i * binFrequency;  // Actual frequency for this bin
+
       if (amplitude > threshold) {
-        const bandIndex = Math.floor((i / analyser.frequencyBinCount) * frequencyRanges.length);
-        freqCounts[bandIndex].count++;
-        freqCounts[bandIndex].bands.push(i);
+        // Check which logarithmic band this frequency belongs to
+        for (let bandIndex = 0; bandIndex < frequencyRanges.length; bandIndex++) {
+          const { min, max } = frequencyRanges[bandIndex];
+          if (frequency >= min && frequency < max) {
+            freqCounts[bandIndex].count++;
+            freqCounts[bandIndex].bands.push(i);
+            break;  // Stop once the correct band is found
+          }
+        }
       }
     }
 
@@ -201,10 +210,9 @@ window.onload = function () {
 
     // Determine the hovered frequency band
     const hoveredBandIndex = Math.floor(mouseX / canvasSectionWidth);
-    
     if (hoveredBandIndex >= 0 && hoveredBandIndex < frequencyRanges.length) {
       const { min, max } = frequencyRanges[hoveredBandIndex];
-      tooltip.innerText = `Frequency Range: ${min} - ${max} Hz`;
+      tooltip.innerText = `Frequency Range: ${min.toFixed(2)} Hz - ${max.toFixed(2)} Hz`;
       tooltip.style.left = `${event.clientX + 10}px`;
       tooltip.style.top = `${event.clientY + 10}px`;
       tooltip.style.display = 'block'; // Show the tooltip
