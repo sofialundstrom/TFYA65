@@ -6,14 +6,14 @@ window.onload = function () {
   const audioContext = new (window.AudioContext || window.webkitAudioContext)();
   const analyser = audioContext.createAnalyser();
 
-  analyser.fftSize = 256;  // Higher resolution for better frequency separation
-  analyser.minDecibels = -70;  // Adjust min dB to ignore very low amplitudes
+  analyser.fftSize = 2048;  // Higher fftSize for better frequency resolution
+  analyser.minDecibels = -90;  // Lower min dB to capture weaker signals
   analyser.maxDecibels = -10;  // Max dB to limit sensitivity
   const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
   const allCircles = [];
   let spawnTimer = 0;  
-  const spawnInterval = 15;  // Control spawn rate
+  const spawnInterval = 1;  // Control spawn rate
 
   // Water wave parameters
   const waves = [];  // Store wave objects for localized wave effects
@@ -48,30 +48,30 @@ window.onload = function () {
 
   // Function to count frequencies and return frequency data
   function countFrequencies() {
-    const freqCounts = Array.from({ length: 8 }, () => ({ count: 0, bands: [] }));
+    let maxAmplitude = 0;
+    let activeBandIndex = -1;
     
     const sampleRate = audioContext.sampleRate;
     const binFrequency = sampleRate / analyser.fftSize;  // Calculate bin size in Hz
 
     for (let i = 0; i < analyser.frequencyBinCount; i++) {
       const amplitude = dataArray[i];
-      const threshold = 20;  // Ignore low amplitudes
       const frequency = i * binFrequency;  // Actual frequency for this bin
 
-      if (amplitude > threshold) {
+      if (amplitude > maxAmplitude) {
         // Check which logarithmic band this frequency belongs to
         for (let bandIndex = 0; bandIndex < frequencyRanges.length; bandIndex++) {
           const { min, max } = frequencyRanges[bandIndex];
           if (frequency >= min && frequency < max) {
-            freqCounts[bandIndex].count++;
-            freqCounts[bandIndex].bands.push(i);
-            break;  // Stop once the correct band is found
+            maxAmplitude = amplitude;
+            activeBandIndex = bandIndex;
+            break;
           }
         }
       }
     }
 
-    return freqCounts;
+    return activeBandIndex;  // Return the index of the active band with the highest amplitude
   }
 
   // Function to get color based on frequency band
@@ -80,28 +80,20 @@ window.onload = function () {
   }
 
   // Function to spawn circles based on frequency activity
-  function spawnCircles(frequencyData) {
+  function spawnCircleForActiveBand(activeBandIndex) {
     const canvasSectionWidth = canvas.width / 8;  // Each frequency band gets one-eighth of the canvas width
     const columnWidth = canvasSectionWidth * 0.8;  // Width of the column, with gaps between columns
 
-    frequencyData.forEach((freqData, bandIndex) => {
-      const { count, bands } = freqData;
-
-      if (count > 0) {  // Only create circles if there's activity in the frequency band
-        const numCircles = count;  // The number of circles corresponds to frequency activity
-
-        for (let i = 0; i < numCircles; i++) {
-          const circle = {
-            x: bandIndex * canvasSectionWidth + (canvasSectionWidth - columnWidth) / 2 + Math.random() * columnWidth,  // Place circles within column
-            y: 0,  // Start from the top of the canvas
-            speed: 1 + Math.random() * 2,  // Random speed
-            radius: 3,  // Fixed size of circles
-            color: getColorForFrequency(bandIndex)  // Get color from color palette
-          };
-          allCircles.push(circle);
-        }
-      }
-    });
+    if (activeBandIndex !== -1) {  // Only create a circle if there's an active band
+      const circle = {
+        x: activeBandIndex * canvasSectionWidth + (canvasSectionWidth - columnWidth) / 2 + Math.random() * columnWidth,  // Place circles within column
+        y: 0,  // Start from the top of the canvas
+        speed: 2 + Math.random() * 3,  // Random speed
+        radius: 3,  // Fixed size of circles
+        color: getColorForFrequency(activeBandIndex)  // Get color from color palette
+      };
+      allCircles.push(circle);
+    }
   }
 
   // Function to create localized wave effect at the water surface
@@ -185,10 +177,10 @@ window.onload = function () {
     analyser.getByteFrequencyData(dataArray);
     canvasContext.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Spawn circles based on frequency bands
+    // Spawn circles based on the active frequency band
     if (spawnTimer === 0) {
-      const frequencyData = countFrequencies();  // Analyze distribution of frequencies
-      spawnCircles(frequencyData);               // Create circles based on frequency activity
+      const activeBandIndex = countFrequencies();  // Get the active frequency band
+      spawnCircleForActiveBand(activeBandIndex);   // Create a circle based on the active band
     }
 
     spawnTimer++;
